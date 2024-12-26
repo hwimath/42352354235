@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>휘매쓰 연산 챌린지!</title>
+  <!-- MathJax 로드 -->
+  <script
+    src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"
+    defer
+  ></script>
+  <style>
+    body {
+      margin: 30px auto;
+      max-width: 900px;
+      font-family: sans-serif;
+      line-height: 1.6;
+    }
+    h1, h2 {
+      text-align: center;
+    }
+    .info {
+      margin: 10px 0;
+      font-weight: bold;
+    }
+    #energyBarContainer {
+      width: 100%;
+      height: 20px;
+      background-color: #ccc;
+      margin: 10px 0;
+      display: none; /* 하 난이도에서는 숨길 수 있음 */
+    }
+    #energyBar {
+      height: 100%;
+      background-color: orange;
+      width: 100%;
+      transition: width 0.2s linear;
+    }
+    .question-box {
+      border: 2px solid #555;
+      padding: 15px;
+      border-radius: 8px;
+      margin-top: 15px;
+      background: #fdfdfd;
+    }
+    .choices {
+      margin-top: 15px;
+    }
+    .choices button {
+      display: block;
+      margin: 8px 0;
+      padding: 6px 12px;
+      border: 1px solid #aaa;
+      cursor: pointer;
+      background-color: #fff;
+      border-radius: 4px;
+      text-align: left;
+    }
+    .hidden { display: none; }
+    .correct { color: #084; font-weight: bold; }
+    .wrong   { color: #c00; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<h1>휘매쓰 연산 챌린지!</h1>
+
+<!-- 난이도 선택 화면 -->
+<div id="startScreen">
+  <h2>난이도를 선택하세요</h2>
+  <p style="text-align:center">
+    <button onclick="startGame('최상')">최상 (20초, +20점)</button>
+    <button onclick="startGame('상')">상 (30초, +15점)</button>
+    <button onclick="startGame('중')">중 (40초, +13점)</button>
+    <button onclick="startGame('하')">하 (시간무제한, +10점)</button>
+  </p>
+</div>
+
+<!-- 게임 진행 영역 -->
+<div id="gameArea" class="hidden">
+
+  <!-- 상단 정보: 남은 기회, 현재 점수, 전체 경과시간 -->
+  <div class="info">
+    난이도: <span id="difficultyLabel"></span> &nbsp;|&nbsp;
+    남은 기회: <span id="lives"></span> &nbsp;|&nbsp;
+    점수: <span id="score">0</span>점 &nbsp;|&nbsp;
+    총 경과 시간: <span id="totalTime">0</span>초
+  </div>
+  
+  <!-- 에너지바(시간 제한 시각화) -->
+  <div id="energyBarContainer">
+    <div id="energyBar"></div>
+  </div>
+
+  <!-- 문제 표시 -->
+  <div id="questionContainer" class="question-box">
+    <div id="questionText"></div>
+    <div class="choices" id="choiceButtons"></div>
+    <div id="solutionBox" class="hidden"></div>
+  </div>
+
+</div>
+
+<!-- 게임 종료 화면 -->
+<div id="gameOverScreen" class="hidden">
+  <h2>게임 종료!</h2>
+  <p id="finalScore"></p>
+  <button onclick="location.reload()">다시 시작하기</button>
+</div>
+
+<script>
+  /****************************************************************
+   * 1) 문제 데이터(총 56개)
+   *    - #1~#19, #26~#40, 추가 #1~#17, #21~#25
+   *    - "A ⨀ B = (5A+3B)/2" 유형(#추가18,19,20)은 제거
+   *    - 마이너스 기호 모두 ASCII '-'로 통일
+   ****************************************************************/
+  const problems = [
+
+    // #1
+    {
+      question: "다음을 간단히 하시오: \\(-2x -\\{-(1-3x) -2(3x+2)\\}\\).",
+      choices: [
+        "\\(x + 5\\)",   // correct
+        "\\(x - 5\\)",
+        "\\(-x + 5\\)",
+        "\\(5 - x\\)"
+      ],
+      correct: 0,
+      solution: "중괄호 => -(1-3x)= -1+3x, 그리고 -2(3x+2)= -6x-4, 합치면 -1+3x -(6x+4)= -5-3x. 전체 => -2x -(-5-3x)= -2x+5+3x= x+5."
+    },
+    // #2
+    {
+      question: "다음을 간단히 하시오: \\(-3a + 2\\{3a - (a-5) -1\\}\\).",
+      choices: [
+        "\\(a + 8\\)",  // correct
+        "\\(-a + 8\\)",
+        "\\(a - 8\\)",
+        "\\(4a + 8\\)"
+      ],
+      correct: 0,
+      solution: "3a-(a-5)=2a+5, 거기에 '-1' => 2a+4, ×2 => 4a+8 => -3a+(4a+8)= a+8."
+    },
+    // #3
+    {
+      question: "다음을 간단히 하시오: \\(-7x - 5\\{x - 4(2x-3)\\}\\).",
+      choices: [
+        "\\(28x - 60\\)",  // correct
+        "\\(-28x + 60\\)",
+        "\\(-28x - 60\\)",
+        "\\(28x + 60\\)"
+      ],
+      correct: 0,
+      solution: "x-4(2x-3)= x-8x+12= -7x+12, ×(-5)= 35x-60 => 전체 -7x+(35x-60)=28x-60."
+    },
+    // #4
+    {
+      question: "다음을 간단히 하시오: \\(6x -2 - 2\\bigl[4x - \\{x+2 +3(2x-1)\\}\\bigr]\\).",
+      choices: [
+        "\\(12x - 4\\)",  // correct
+        "\\(12x + 4\\)",
+        "\\(6x - 4\\)",
+        "\\(6x - 2\\)"
+      ],
+      correct: 0,
+      solution: "중괄호 => x+2+3(2x-1)= x+2+6x-3= 7x-1 => 대괄호 => 4x-(7x-1)= -3x+1 => ×(-2)= 6x-2 => 전체 => (6x-2)+(6x-2)=12x-4."
+    },
+    // #5
+    {
+      question: "다음을 간단히 하시오: \\(3x + [7 -\\{2x - (3x+4)\\}]\\).",
+      choices: [
+        "\\(4x + 11\\)",   // correct
+        "\\(4x - 11\\)",
+        "\\(x + 7\\)",
+        "\\(-4x + 11\\)"
+      ],
+      correct: 0,
+      solution: "2x-(3x+4)= -x-4 => 7-(-x-4)= 7+x+4= x+11 => 전체 3x+(x+11)=4x+11."
+    },
+    // #6
+    {
+      question: "다음을 간단히 하시오: \\(3 - \\{4x - (x+9)\\}\\).",
+      choices: [
+        "\\(12 - 3x\\)",  // correct
+        "\\(3x - 12\\)",
+        "\\(12 + 3x\\)",
+        "\\(-12 - 3x\\)"
+      ],
+      correct: 0,
+      solution: "4x-(x+9)=3x-9 => 3-(3x-9)= 3-3x+9=12-3x."
+    },
+    // #7
+    {
+      question: "다음을 간단히 하시오: \\(2x + \\{3x -(-2x+5)\\}\\).",
+      choices: [
+        "\\(7x - 5\\)", // correct
+        "\\(7x + 5\\)",
+        "\\(-7x - 5\\)",
+        "\\(3x - 5\\)"
+      ],
+      correct: 0,
+      solution: "3x-(-2x+5)=3x+2x-5=5x-5 => 전체 => 2x+(5x-5)=7x-5."
+    },
+    // #8
+    {
+      question: "다음을 간단히 하시오: \\(-5x + \\{x - (3x+4)\\}\\).",
+      choices: [
+        "\\(-7x - 4\\)", // correct
+        "\\(-7x + 4\\)",
+        "\\(-3x - 4\\)",
+        "\\(7x - 4\\)"
+      ],
+      correct: 0,
+      solution: "x-(3x+4)= x-3x-4= -2x-4 => -5x+(-2x-4)= -7x-4."
+    },
+    // #9
+    {
+      question: "다음을 간단히 하시오: \\(-2x -\\{8x +(-5x-9)\\}\\).",
+      choices: [
+        "\\(-5x + 9\\)", // correct
+        "\\(-5x - 9\\)",
+        "\\(-x + 9\\)",
+        "\\(5x + 9\\)"
+      ],
+      correct: 0,
+      solution: "8x+(-5x-9)=3x-9 => 전체 => -2x -(3x-9)= -5x+9."
+    },
+    // #10
+    {
+      question: "다음을 간단히 하시오: \\(6x -7 + 3\\{-3x -(4x+1)\\}\\).",
+      choices: [
+        "\\(-15x - 10\\)", // correct
+        "\\(15x - 10\\)",
+        "\\(-15x + 10\\)",
+        "\\(-21x - 7\\)"
+      ],
+      correct: 0,
+      solution: "-3x-(4x+1)= -7x-1 => ×3= -21x-3 => 전체 => 6x-7 +(-21x-3)= -15x-10."
+    },
+    // #11
+    {
+      question: "다음을 간단히 하시오: \\(-3x + 8 -\\{4x - 3(x-2)\\}\\).",
+      choices: [
+        "\\(-4x + 2\\)", // correct
+        "\\(-2x + 2\\)",
+        "\\(-4x - 2\\)",
+        "\\(-3x + 2\\)"
+      ],
+      correct: 0,
+      solution: "4x-3(x-2)=4x-(3x-6)= x+6 => 전체 => -3x+8-(x+6)= -4x+2."
+    },
+    // #12
+    {
+      question: "다음을 간단히 하시오: \\(4x + [8 -\\{3x -(5x-3)\\}]\\).",
+      choices: [
+        "\\(6x + 5\\)", // correct
+        "\\(6x - 5\\)",
+        "\\(4x + 5\\)",
+        "\\(-6x + 5\\)"
+      ],
+      correct: 0,
+      solution: "3x-(5x-3)= -2x+3 => 8-(-2x+3)= 8+2x-3= 2x+5 => 전체 => 4x+(2x+5)= 6x+5."
+    },
+    // #13
+    {
+      question: "다음을 간단히 하시오: \\(-x + [5x - 6 +\\{9 -(2x -4)\\}]\\).",
+      choices: [
+        "\\(2x + 7\\)", // correct
+        "\\(-2x + 7\\)",
+        "\\(2x - 7\\)",
+        "\\(3x + 7\\)"
+      ],
+      correct: 0,
+      solution: "9-(2x-4)= 9-2x+4=13-2x => [5x-6+(13-2x)] => 3x+7 => -x+(3x+7)= 2x+7."
+    },
+    // #14
+    {
+      question: "다음을 간단히 하시오: \\(-2x + [3x +4 -\\{5x -(3x-8)\\}]\\).",
+      choices: [
+        "\\(-x - 4\\)", // correct
+        "\\(x - 4\\)",
+        "\\(-3x - 4\\)",
+        "\\(-x + 4\\)"
+      ],
+      correct: 0,
+      solution: "5x-(3x-8)=5x-3x+8=2x+8 => [3x+4 - (2x+8)] => x-4 => -2x+(x-4)= -x-4."
+    },
+    // #15
+    {
+      question: "다음을 간단히 하시오: \\(2x +5 - [2x -2\\{4x -2 -(x+5)\\}]\\).",
+      choices: [
+        "\\(6x - 9\\)", // correct
+        "\\(-6x + 9\\)",
+        "\\(6x + 9\\)",
+        "\\(6x - 5\\)"
+      ],
+      correct: 0,
+      solution: "4x-2-(x+5)=3x-7 => ×2=6x-14 => [2x-(6x-14)] => -4x+14 => 2x+5 -(-4x+14)= 6x-9."
+    },
+    // #16
+    {
+      question: "다음을 간단히 하시오: \\(-3x +5 +3\\bigl[x +4\\{3x +7 -(4x+6)\\}\\bigr]\\).",
+      choices: [
+        "\\(-12x + 17\\)", // correct
+        "\\(-12x -17\\)",
+        "\\(-3x + 17\\)",
+        "\\(12x + 17\\)"
+      ],
+      correct: 0,
+      solution: "3x+7-(4x+6)= -x+1 => x+4(-x+1)= x-4x+4= -3x+4 => ×3= -9x+12 => 전체 => -3x+5 +(-9x+12)= -12x+17."
+    },
+    // #17
+    {
+      question: "다음을 간단히 하시오: \\(2x -\\{1 -(3x-4)\\} - x\\).",
+      choices: [
+        "\\(4x - 5\\)", // correct
+        "\\(-4x -5\\)",
+        "\\(4x + 5\\)",
+        "\\(5 - 4x\\)"
+      ],
+      correct: 0,
+      solution: "1-(3x-4)=1-3x+4=5-3x => 2x-(5-3x)- x= 2x-5+3x- x=4x-5."
+    },
+    // #18
+    {
+      question: "다음을 간단히 하시오: \\(5a - [3a -2b -\\{2a+4b -(a-6b)\\}]\\).",
+      choices: [
+        "\\(3a + 12b\\)", // correct
+        "\\(-3a + 12b\\)",
+        "\\(3a - 12b\\)",
+        "\\(5a + 12b\\)"
+      ],
+      correct: 0,
+      solution: "2a+4b -(a-6b)= a+10b => [3a-2b-(a+10b)] => 2a-12b => 5a-[2a-12b]=3a+12b."
+    },
+    // #19
+    {
+      question: "다음을 간단히 하시오: \\(-5x + [2^3 x +2 -\\{2 + 3(x-2)\\}]\\). (\\(2^3 x=8x\\))",
+      choices: [
+        "\\(6\\)", // correct
+        "\\(-6\\)",
+        "\\(0\\)",
+        "\\(6x\\)"
+      ],
+      correct: 0,
+      solution: "2+3(x-2)=3x-6+2=3x-4 => [8x+2 -(3x-4)] => 5x+6 => 전체 => -5x+(5x+6)=6."
+    },
+
+    // #26
+    {
+      question: "다음을 간단히 하시오: \\(\\dfrac{9a-6}{3} - \\dfrac{10a-15}{5}\\).",
+      choices: [
+        "\\(a + 1\\)", // correct
+        "\\(a - 1\\)",
+        "\\(3a - 2\\)",
+        "\\(-a + 1\\)"
+      ],
+      correct: 0,
+      solution: "(9a-6)/3=3a-2, (10a-15)/5=2a-3 => (3a-2)-(2a-3)= a+1."
+    },
+    // #27
+    {
+      question: "다음을 간단히 하시오: \\(-\\tfrac{3}{4}(8x-12) - \\tfrac{2}{3}(3x-9)\\).",
+      choices: [
+        "\\(-8x + 15\\)", // correct
+        "\\(-8x - 15\\)",
+        "\\(-6x + 9\\)",
+        "\\(8x - 15\\)"
+      ],
+      correct: 0,
+      solution: "(3/4)(8x-12)=6x-9 => 맨앞 - => -6x+9, 그리고 (2/3)(3x-9)=2x-6 => 전체 => (-6x+9)-(2x-6)= -8x+15."
+    },
+    // #28
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{1}{6}x -4 + \\tfrac{2}{3}x +9\\).",
+      choices: [
+        "\\(\\tfrac{5}{6}x + 5\\)", // correct
+        "\\(\\tfrac{5}{6}x - 5\\)",
+        "\\(\\tfrac{1}{6}x + 9\\)",
+        "\\(\\tfrac{5}{6}(x+5)\\)"
+      ],
+      correct: 0,
+      solution: "(1/6)x+(2/3)x= (1/6+4/6)x=5/6 x, -4+9=5 => 5/6 x+5."
+    },
+    // #29
+    {
+      question: "다음을 간단히 하시오: \\(\\bigl(\\tfrac{1}{4}x - \\tfrac{5}{6}\\bigr) \\div \\tfrac{5}{2}\\).",
+      choices: [
+        "\\(\\tfrac{1}{10}x - \\tfrac{1}{3}\\)", // correct
+        "\\(\\tfrac{1}{10}x + \\tfrac{1}{3}\\)",
+        "\\(\\tfrac{3}{10}x - \\tfrac{1}{3}\\)",
+        "\\(\\tfrac{1}{10}x - \\tfrac{2}{3}\\)"
+      ],
+      correct: 0,
+      solution: "나누기 (5/2)= 곱하기 (2/5). (1/4)x*(2/5)=1/10 x, - (5/6)*(2/5)= -10/30= -1/3."
+    },
+    // #30
+    {
+      question: "다음을 간단히 하시오: \\(\\bigl(\\tfrac{9}{8}x - \\tfrac{15}{4}\\bigr) \\div \\bigl(-\\tfrac{9}{4}\\bigr)\\).",
+      choices: [
+        "\\(-\\tfrac{1}{2}x + \\tfrac{5}{3}\\)", // correct
+        "\\(\\tfrac{1}{2}x - \\tfrac{5}{3}\\)",
+        "\\(-\\tfrac{1}{2}x - \\tfrac{5}{3}\\)",
+        "\\(\\tfrac{1}{2}x + \\tfrac{5}{3}\\)"
+      ],
+      correct: 0,
+      solution: "나누기 -9/4 => 곱하기 -4/9 => (9/8 x)*(-4/9)= -1/2 x, 그리고 -15/4 * -4/9=60/36=5/3."
+    },
+    // #31
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{2(5x-2)}{5} - \\tfrac{3(4x+1)}{4}\\).",
+      choices: [
+        "\\(-\\tfrac{20x+31}{20}\\)", // correct
+        "\\(\\tfrac{20x+31}{20}\\)",
+        "\\(-\\tfrac{20x-31}{20}\\)",
+        "\\(-\\tfrac{31x+20}{20}\\)"
+      ],
+      correct: 0,
+      solution: "2(5x-2)/5= (10x-4)/5, 3(4x+1)/4= (12x+3)/4 => 통분20 => (40x-16)-(60x+15)= -20x-31 => /20."
+    },
+    // #32
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{8a-12}{4} - \\tfrac{6a-15}{3} - \\tfrac{10a+5}{5}\\).",
+      choices: [
+        "\\(-2a + 1\\)", // correct
+        "\\(2a + 1\\)",
+        "\\(-2a - 1\\)",
+        "\\(2a - 1\\)"
+      ],
+      correct: 0,
+      solution: "(8a-12)/4=2a-3, (6a-15)/3=2a-5, (10a+5)/5=2a+1 => 전체 => (2a-3)-(2a-5)-(2a+1)= -2a+1."
+    },
+    // #33
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{x-3}{2} + \\tfrac{2x+1}{3}\\).",
+      choices: [
+        "\\(\\tfrac{7(x - 1)}{6}\\)", // correct
+        "\\(\\tfrac{7(x + 1)}{6}\\)",
+        "\\(\\tfrac{7x - 7}{3}\\)",
+        "\\(\\tfrac{x - 1}{6}\\)"
+      ],
+      correct: 0,
+      solution: "통분6 => (x-3)*3 + (2x+1)*2 => 3x-9 +4x+2=7x-7 => /6 => 7(x-1)/6."
+    },
+    // #34
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{3x+5}{3} + \\tfrac{4x-1}{4}\\).",
+      choices: [
+        "\\(\\tfrac{24x + 17}{12}\\)", // correct
+        "\\(2x + \\tfrac{17}{3}\\)",
+        "\\(\\tfrac{24x - 17}{12}\\)",
+        "\\(\\tfrac{12x + 17}{24}\\)"
+      ],
+      correct: 0,
+      solution: "통분12 => (3x+5)*4 + (4x-1)*3 => (12x+20)+(12x-3)=24x+17 => /12."
+    },
+    // #35
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{2x+3}{2} + \\tfrac{3x-2}{4}\\).",
+      choices: [
+        "\\(\\tfrac{7x+4}{4}\\)", // correct
+        "\\(\\tfrac{7x-4}{4}\\)",
+        "\\(\\tfrac{4x+7}{4}\\)",
+        "\\(\\tfrac{7x+4}{2}\\)"
+      ],
+      correct: 0,
+      solution: "통분4 => (2x+3)*2 + (3x-2)=4x+6+3x-2=7x+4 => /4."
+    },
+    // #36
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{x+2}{9} + \\tfrac{2x-6}{3}\\).",
+      choices: [
+        "\\(\\tfrac{7x -16}{9}\\)", // correct
+        "\\(\\tfrac{7x +16}{9}\\)",
+        "\\(\\tfrac{x+2}{3}\\)",
+        "\\(\\tfrac{6x-18}{9}\\)"
+      ],
+      correct: 0,
+      solution: "통분9 => (x+2) + 3(2x-6)= x+2+6x-18=7x-16 => /9."
+    },
+    // #37
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{3x-4}{4} + \\tfrac{-5x+2}{6}\\).",
+      choices: [
+        "\\(-\\tfrac{x+8}{12}\\)", // correct
+        "\\(\\tfrac{x+8}{12}\\)",
+        "\\(-\\tfrac{x-8}{12}\\)",
+        "\\(\\tfrac{9x -12}{12}\\)"
+      ],
+      correct: 0,
+      solution: "통분12 => (3x-4)*3 + (-5x+2)*2= (9x-12)+(-10x+4)= -x-8 => -(x+8)/12."
+    },
+    // #38
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{-3x+8}{10} + \\tfrac{x-4}{4}\\).",
+      choices: [
+        "\\(-\\tfrac{x+4}{20}\\)", // correct
+        "\\(\\tfrac{x+4}{20}\\)",
+        "\\(\\tfrac{-x+4}{20}\\)",
+        "\\(-\\tfrac{5x+4}{20}\\)"
+      ],
+      correct: 0,
+      solution: "통분20 => (-3x+8)*2 + (x-4)*5= -6x+16 +5x-20= -x-4 => -(x+4)/20."
+    },
+    // #39
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{x+3}{3} - \\tfrac{2x+1}{2}\\).",
+      choices: [
+        "\\(\\tfrac{-4x + 3}{6}\\)", // correct
+        "\\(\\tfrac{4x - 3}{6}\\)",
+        "\\(\\tfrac{-4x - 3}{6}\\)",
+        "\\(\\tfrac{x+3}{6}\\)"
+      ],
+      correct: 0,
+      solution: "통분6 => (x+3)*2 - (2x+1)*3= (2x+6)-(6x+3)= -4x+3 => /6."
+    },
+    // #40
+    {
+      question: "다음을 간단히 하시오: \\(\\tfrac{2x-4}{5} - \\tfrac{x-3}{2}\\).",
+      choices: [
+        "\\(\\tfrac{-x + 7}{10}\\)", // correct
+        "\\(\\tfrac{x -7}{10}\\)",
+        "\\(\\tfrac{x +7}{10}\\)",
+        "\\(\\tfrac{-x -7}{10}\\)"
+      ],
+      correct: 0,
+      solution: "통분10 => (2x-4)*2 - (x-3)*5= (4x-8)-(5x-15)= -x+7 => /10."
+    },
+
+    // ===================== 추가 세트 #1~#17, #21~#25 (총 22문항) =====================
+
+    // 추가1
+    {
+      question: "[A=3x-2, B=2x+5]  식 A+B를 x로 나타내시오.",
+      choices: [
+        "\\(5x + 3\\)", // correct
+        "\\(5x - 3\\)",
+        "\\(3x + 5\\)",
+        "\\(3x - 7\\)"
+      ],
+      correct: 0,
+      solution: "A+B= (3x-2)+(2x+5)= 5x+3."
+    },
+    // 추가2
+    {
+      question: "[A=3x-2, B=2x+5]  식 A-B를 x로 나타내시오.",
+      choices: [
+        "\\(x - 7\\)", // correct
+        "\\(x + 7\\)",
+        "\\(x - 3\\)",
+        "\\(3x - 7\\)"
+      ],
+      correct: 0,
+      solution: "A-B= (3x-2)-(2x+5)= x-7."
+    },
+    // 추가3
+    {
+      question: "[A=3x-2, B=2x+5]  식 3A+2B를 x로 나타내시오.",
+      choices: [
+        "\\(13x + 4\\)", // correct
+        "\\(13x - 4\\)",
+        "\\(9x + 4\\)",
+        "\\(9x - 16\\)"
+      ],
+      correct: 0,
+      solution: "3A=9x-6, 2B=4x+10 => 합=13x+4."
+    },
+    // 추가4
+    {
+      question: "[A=3x-2, B=2x+5]  식 4A+3B를 x로 나타내시오.",
+      choices: [
+        "\\(18x + 7\\)", // correct
+        "\\(18x - 7\\)",
+        "\\(12x + 15\\)",
+        "\\(18x + 15\\)"
+      ],
+      correct: 0,
+      solution: "4A=12x-8, 3B=6x+15 => 합=18x+7."
+    },
+    // 추가5
+    {
+      question: "[A=3x-2, B=2x+5]  식 5A - 4B를 x로 나타내시오.",
+      choices: [
+        "\\(7x - 30\\)", // correct
+        "\\(7x + 30\\)",
+        "\\(23x - 10\\)",
+        "\\(-7x -30\\)"
+      ],
+      correct: 0,
+      solution: "5A=15x-10, -4B=-8x-20 => 합=7x-30."
+    },
+    // 추가6
+    {
+      question: "[A=4x+6y, B=3x-9y]  식 A+(2A+B)를 x,y로 나타내시오.",
+      choices: [
+        "\\(15x + 9y\\)", // correct
+        "\\(15x - 9y\\)",
+        "\\(7x + 9y\\)",
+        "\\(15x + 3y\\)"
+      ],
+      correct: 0,
+      solution: "2A=8x+12y, B=3x-9y => 2A+B=11x+3y => A+(2A+B)=15x+9y."
+    },
+    // 추가7
+    {
+      question: "[A=4x+6y, B=3x-9y]  식 2A - (3A-2B)를 x,y로 나타내시오.",
+      choices: [
+        "\\(2x - 24y\\)", // correct
+        "\\(24x - 2y\\)",
+        "\\(2x + 24y\\)",
+        "\\(-2x -24y\\)"
+      ],
+      correct: 0,
+      solution: "3A=12x+18y, 2B=6x-18y => (3A-2B)=6x+36y, 2A=8x+12y => 차=2x-24y."
+    },
+    // 추가8
+    {
+      question: "[A=4x+6y, B=3x-9y]  식 -2A - B + 3(2A+B)를 x,y로 나타내시오.",
+      choices: [
+        "\\(22x + 6y\\)", // correct
+        "\\(22x - 6y\\)",
+        "\\(-22x + 6y\\)",
+        "\\(33x + 9y\\)"
+      ],
+      correct: 0,
+      solution: "2A=8x+12y, B=3x-9y => 2A+B=11x+3y => ×3=33x+9y, 한편 -2A= -8x-12y, -B= -3x+9y => 합=22x+6y."
+    },
+    // 추가9
+    {
+      question: "[A=4x+6y, B=3x-9y]  식 3(A-B) - (2A-5B)를 x,y로 나타내시오.",
+      choices: [
+        "\\(10x - 12y\\)", // correct
+        "\\(10x + 12y\\)",
+        "\\(-10x -12y\\)",
+        "\\(7x + 57y\\)"
+      ],
+      correct: 0,
+      solution: "A-B=(4x+6y)-(3x-9y)= x+15y => 3(A-B)=3x+45y, 2A=8x+12y, -5B= -15x+45y => (2A-5B)= -7x+57y => 차= 10x-12y."
+    },
+
+
+    // 추가21
+    {
+      question: "[A=2-x, B=-3x-2]  식 3A -2B를 x로 나타내시오.",
+      choices: [
+        "\\(3x + 10\\)", // correct
+        "\\(3x -10\\)",
+        "\\(-3x +10\\)",
+        "\\(x +10\\)"
+      ],
+      correct: 0,
+      solution: "3A=3(2-x)=6-3x, -2B= -2(-3x-2)=6x+4 => 합= 6-3x +6x+4= 3x+10."
+    },
+    // 추가22
+    {
+      question: "[A=2x+8, B=3x-2]  식 3A-2B를 x로 나타내시오.",
+      choices: [
+        "\\(28\\)", // correct
+        "\\(28x\\)",
+        "\\(24\\)",
+        "\\(4\\)"
+      ],
+      correct: 0,
+      solution: "3A=3(2x+8)=6x+24, -2B=-2(3x-2)= -6x+4 => 합= 6x+24+(-6x+4)=28."
+    },
+    // 추가23
+    {
+      question: "[A=4x+5, B=x-1]  식 2(A-B)-3B를 x로 나타내시오.",
+      choices: [
+        "\\(3x + 15\\)", // correct
+        "\\(3x -15\\)",
+        "\\(9x +15\\)",
+        "\\(6x +12\\)"
+      ],
+      correct: 0,
+      solution: "A-B= (4x+5)-(x-1)= 3x+6 => ×2=6x+12, -3B= -3(x-1)= -3x+3 => 합=3x+15."
+    },
+    // 추가24
+    {
+      question: "[A=2x-y, B=x+2y]  식 3A -2(A-B)를 x,y로 나타내시오.",
+      choices: [
+        "\\(4x + 3y\\)", // correct
+        "\\(4x -3y\\)",
+        "\\(6x +3y\\)",
+        "\\(4x +6y\\)"
+      ],
+      correct: 0,
+      solution: "A-B= (2x-y)-(x+2y)= x-3y => ×(-2)= -2x+6y, 3A=6x-3y => 합=4x+3y."
+    },
+    // 추가25
+    {
+      question: "[A=2x-3, B=-x+4]  식 2A+3B를 x로 나타내시오.",
+      choices: [
+        "\\(x + 6\\)", // correct
+        "\\(x -6\\)",
+        "\\(4x +6\\)",
+        "\\(-x +6\\)"
+      ],
+      correct: 0,
+      solution: "2A=4x-6, 3B= -3x+12 => 합= x+6."
+    }
+
+  ]; // end of problems array
+
+  /***********************************************
+   * 2) 문제와 보기를 무작위로 섞기
+   ***********************************************/
+  function shuffleArray(arr){
+    for(let i=arr.length-1; i>0; i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+  }
+
+  // 각 문제의 choices도 내부에서 섞어준다
+  problems.forEach(p=>{
+    const indices = [0,1,2,3];
+    shuffleArray(indices);
+    const newChoices = [];
+    let newCorrectIndex = 0;
+    for(let i=0; i<4; i++){
+      newChoices[i] = p.choices[indices[i]];
+      if(indices[i]===p.correct) newCorrectIndex=i;
+    }
+    p.choices = newChoices;
+    p.correct = newCorrectIndex;
+  });
+
+  // 메인 문제배열도 전체적으로 섞기
+  shuffleArray(problems);
+
+  /***********************************************
+   * 전역 변수들
+   ***********************************************/
+  let difficulty = "";
+  let difficultyTime = 0;       // 문제당 제한시간
+  let difficultyScore = 0;      // 문제 정답 시 점수
+  let currentIndex = 0;         // 현재 몇 번째 문제
+  let score = 0;                // 현재 점수
+  let lives = 3;                // 기회(3번 틀리면 게임오버)
+  let timerId = null;           // setInterval ID
+  let timeLeft = 0;             // 현재 문제 남은 시간
+  let totalTime = 0;            // 전체 경과 시간(초)
+  let infiniteMode = false;     // 모든 문제 소진 후 무한 모드
+
+  /***********************************************
+   * 난이도 선택 버튼 → 게임 시작
+   ***********************************************/
+  function startGame(selected){
+    difficulty = selected;
+    document.getElementById("startScreen").classList.add("hidden");
+    document.getElementById("gameArea").classList.remove("hidden");
+
+    // 난이도별 설정
+    switch(difficulty){
+      case "최상":
+        difficultyTime=20; difficultyScore=20; break;
+      case "상":
+        difficultyTime=30; difficultyScore=15; break;
+      case "중":
+        difficultyTime=40; difficultyScore=13; break;
+      case "하":
+        difficultyTime=999999; difficultyScore=10; break; // 사실상 무제한
+    }
+
+    // 에너지바 표시 여부
+    if(difficulty==="하"){
+      document.getElementById("energyBarContainer").style.display="none";
+    } else {
+      document.getElementById("energyBarContainer").style.display="block";
+    }
+
+    // 기본값 세팅
+    document.getElementById("difficultyLabel").textContent= difficulty;
+    document.getElementById("lives").textContent= lives;
+    document.getElementById("score").textContent= score;
+    currentIndex = 0;
+    infiniteMode = false;
+    totalTime= 0;
+
+    // 전체 경과 시간 증가 타이머
+    setInterval(()=>{
+      totalTime++;
+      document.getElementById("totalTime").textContent= totalTime;
+    },1000);
+
+    loadQuestion();
+  }
+
+  /***********************************************
+   * 문제 로드
+   ***********************************************/
+  function loadQuestion(){
+    if(currentIndex >= problems.length){
+      // 모든 문제를 소진하면 "무한 모드"
+      infiniteMode= true;
+    }
+    let problem=null;
+    if(!infiniteMode){
+      problem = problems[currentIndex];
+    } else {
+      // 무한모드에서는 무작위 문제
+      const rnd = Math.floor(Math.random()*problems.length);
+      problem = problems[rnd];
+    }
+
+    // 문제 표시
+    const qEl= document.getElementById("questionText");
+    qEl.innerHTML= "<b>문제를 풀어보세요</b><br>"+ problem.question;
+    
+    // 보기 표시
+    const choiceBox= document.getElementById("choiceButtons");
+    choiceBox.innerHTML="";
+    problem.choices.forEach((ch,i)=>{
+      const btn= document.createElement("button");
+      btn.innerHTML= ch;
+      btn.onclick= ()=> checkAnswer(i, problem);
+      choiceBox.appendChild(btn);
+    });
+
+    // 풀이 박스 초기화
+    const solEl= document.getElementById("solutionBox");
+    solEl.classList.add("hidden");
+    solEl.innerHTML= "";
+
+    // 시간 리셋
+    if(timerId) clearInterval(timerId);
+    timeLeft= difficultyTime;
+    updateEnergyBar();
+
+    if(difficulty!=="하"){
+      timerId= setInterval(()=>{
+        timeLeft--;
+        updateEnergyBar();
+        if(timeLeft<=0){
+          clearInterval(timerId);
+          loseLife(problem, "(시간초과) ");
+        }
+      },1000);
+    }
+
+    // 문제·보기 로딩 후 MathJax 수식 재렌더
+    setTimeout(()=>{ MathJax.typeset(); },50);
+  }
+
+  /***********************************************
+   * 에너지바(시간게이지) 업데이트
+   ***********************************************/
+  function updateEnergyBar(){
+    const bar= document.getElementById("energyBar");
+    if(difficulty==="하"){
+      bar.style.width="100%";
+      return;
+    }
+    const perc= (timeLeft/difficultyTime)*100;
+    bar.style.width= perc+"%";
+  }
+
+  /***********************************************
+   * 정답 체크
+   ***********************************************/
+  function checkAnswer(choiceIndex, problem){
+    clearInterval(timerId);
+    if(choiceIndex=== problem.correct){
+      // 정답
+      score+= difficultyScore;
+      document.getElementById("score").textContent= score;
+      currentIndex++;
+      // 다음 문제로
+      setTimeout(loadQuestion,500);
+    } else {
+      // 오답
+      loseLife(problem,"");
+    }
+  }
+
+  /***********************************************
+   * 오답(시간초과 포함) 처리 → 기회 차감
+   ***********************************************/
+  function loseLife(problem, prefixMsg){
+    lives--;
+    document.getElementById("lives").textContent= lives;
+    // 정답 및 풀이 표시
+    const solEl= document.getElementById("solutionBox");
+    solEl.classList.remove("hidden");
+    const correctAnswer= problem.choices[problem.correct];
+    solEl.innerHTML= "<div class='wrong'>"+prefixMsg+"오답!</div>"
+                   + "<div>정답: <span class='correct'>"+correctAnswer+"</span></div>"
+                   + "<div>풀이: "+problem.solution+"</div>";
+    
+    // 해설부분도 MathJax 렌더
+    MathJax.typeset();
+
+    if(lives<=0){
+      // 게임 오버
+      setTimeout(gameOver,1500);
+    } else {
+      currentIndex++;
+      setTimeout(loadQuestion,2000);
+    }
+  }
+
+  /***********************************************
+   * 게임 종료
+   ***********************************************/
+  function gameOver(){
+    document.getElementById("gameArea").classList.add("hidden");
+    document.getElementById("gameOverScreen").classList.remove("hidden");
+    document.getElementById("finalScore").textContent=
+      "당신의 최종 점수는 "+score+"점 입니다. (총 경과: "+totalTime+"초)";
+  }
+</script>
+
+</body>
+</html>
